@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="_csrf" th:content="${_csrf.token}">
+    <meta name="_csrf_header" th:content="${_csrf.headerName}">
+    <title th:text="'Room #' + ${roomId} + ' | CollabSpace'">Workspace | CollabSpace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+    <style>
+        /* Eraser cursor */
+        #whiteboardCanvas.eraser-mode { cursor: cell; }
+        /* Color swatches */
+        .swatch {
+            width: 22px; height: 22px; border-radius: 5px;
+            cursor: pointer; border: 2px solid transparent;
+            transition: all .15s; flex-shrink: 0;
+        }
+        .swatch.active, .swatch:hover { transform: scale(1.2); border-color: rgba(255,255,255,0.6); }
+        /* Brush preview */
+        #brushPreview {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--border); display: flex; align-items:center; justify-content:center;
+            flex-shrink:0;
+        }
+        #brushPreviewDot { border-radius: 50%; background: #111; display: block; transition: all .15s; }
+
+        /* Save indicator */
+        #saveIndicator {
+            font-size:12px; color: var(--text-muted);
+            transition: color .3s;
+        }
+        #saveIndicator.saving { color: var(--gold); }
+        #saveIndicator.saved  { color: var(--green); }
+
+        /* Auth nudge bar */
+        .auth-nudge {
+            background: linear-gradient(90deg, rgba(99,102,241,0.12), rgba(6,182,212,0.08));
+            border-bottom: 1px solid rgba(99,102,241,0.2);
+            padding: 8px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text-secondary);
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .auth-nudge a, .auth-nudge button {
+            color: #a5b4fc; font-weight: 700; background: none;
+            border: none; cursor: pointer; font-size: 13px; font-family: inherit;
+            text-decoration: underline; padding: 0;
+        }
+    </style>
+</head>
+<body>
+<div class="app-bg workspace-layout"
+     th:attr="data-room-id=${roomId},data-username=${username},data-auth=${isAuthenticated}">
+
+    <!-- ===== TOP BAR ===== -->
+    <header class="top-bar">
+        <a class="top-bar-brand" th:href="@{/dashboard}" style="text-decoration:none">
+            <div class="brand-icon" style="width:32px;height:32px;font-size:14px" aria-label="CollabSpace logo">&#x2728;</div>
+            <div>
+                <div style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;color:var(--text-primary)">
+                    CollabSpace
+                </div>
+            </div>
+        </a>
+
+        <div style="display:flex;align-items:center;gap:10px">
+            <div class="room-id-badge" id="roomIdBadge">
+                &#x1F517; <span th:text="${roomId}"></span>
+            </div>
+            <span id="statusLabel" style="font-size:12px;color:var(--text-muted)">Connecting...</span>
+        </div>
+
+        <div class="header-actions">
+            <!-- Authentication pill -->
+            <div th:if="${isAuthenticated}" class="user-badge">
+                <div class="user-avatar" th:text="${username.substring(0,1).toUpperCase()}">U</div>
+                <span th:text="${username}">User</span>
+            </div>
+            <span th:if="${!isAuthenticated}"
+                  style="font-size:13px;color:var(--text-muted)">
+                &#x1F464; <span th:text="${username}">Guest</span>
+            </span>
+            <a class="btn btn-ghost btn-sm" th:href="@{/dashboard}">&#x2190; Dashboard</a>
+            <form th:if="${isAuthenticated}" th:action="@{/logout}" method="post" style="margin:0">
+                <button class="btn btn-ghost btn-sm" type="submit">Sign Out</button>
+            </form>
+            <a th:if="${!isAuthenticated}" class="btn btn-primary btn-sm"
+               th:href="@{/dashboard(signup=true)}">
+                Create Account
+            </a>
+        </div>
+    </header>
+
+    <!-- Guest nudge bar -->
+    <div class="auth-nudge" th:if="${!isAuthenticated}">
+        <span>&#x26A1; You're collaborating as a guest. Notes auto-save to this room only.</span>
+        <span>
+            <a th:href="@{/dashboard(signup=true)}">Create a free account</a>
+            to save your history &amp; access rooms across devices.
+        </span>
+    </div>
+
+    <!-- Room info bar with copy -->
+    <div class="room-info-bar">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap">
+            <span style="font-size:13px;color:var(--text-muted)">Room ID:</span>
+            <code style="font-family:'Outfit',monospace;font-size:13px;color:#a5b4fc;font-weight:700" th:text="${roomId}"></code>
+            <button class="btn btn-ghost btn-sm" id="copyRoomBtn" title="Copy Room ID">&#x1F4CB; Copy ID</button>
+            <button class="btn btn-ghost btn-sm" id="copyLinkBtn" title="Copy share link">&#x1F517; Share Link</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="connStatus" style="font-size:12px;color:var(--text-muted)">Connecting…</span>
+        </div>
+    </div>
+
+    <!-- ===== WORKSPACE GRID ===== -->
+    <main class="workspace-grid">
+
+        <!-- WHITEBOARD PANEL -->
+        <section class="panel whiteboard-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <div class="panel-title-icon blue">&#x1F3A8;</div>
+                    <h2>Collaborative Whiteboard</h2>
+                </div>
+                <div class="tools">
+                    <!-- Colour swatches -->
+                    <div class="tool-group" id="swatchGroup">
+                        <span class="tool-label">Color</span>
+                        <div class="swatch active" style="background:#111111" data-color="#111111"></div>
+                        <div class="swatch" style="background:#6366f1" data-color="#6366f1"></div>
+                        <div class="swatch" style="background:#06b6d4" data-color="#06b6d4"></div>
+                        <div class="swatch" style="background:#f59e0b" data-color="#f59e0b"></div>
+                        <div class="swatch" style="background:#ef4444" data-color="#ef4444"></div>
+                        <div class="swatch" style="background:#22c55e" data-color="#22c55e"></div>
+                        <input id="colorPicker" type="color" value="#111111" title="Custom color"
+                               style="width:22px;height:22px;border-radius:5px;border:2px solid var(--border);padding:1px;background:transparent;cursor:pointer">
+                    </div>
+                    <!-- Brush size -->
+                    <div class="tool-group">
+                        <span class="tool-label">Size</span>
+                        <input id="brushSize" type="range" min="1" max="30" value="4" style="width:70px">
+                        <div id="brushPreview"><span id="brushPreviewDot" style="width:4px;height:4px"></span></div>
+                    </div>
+                    <!-- Tools -->
+                    <div class="tool-group">
+                        <button class="btn btn-ghost btn-sm" id="eraserBtn" title="Eraser (E)">&#x1F9F9; Eraser</button>
+                        <button class="btn btn-ghost btn-sm" id="undoBtn" title="Undo (Ctrl+Z)">&#x21A9; Undo</button>
+                        <button class="btn btn-danger btn-sm" id="clearCanvasBtn" title="Clear all">&#x1F5D1; Clear</button>
+                    </div>
+                    <!-- Export whiteboard -->
+                    <div class="export-wrapper">
+                        <button class="btn btn-ghost btn-sm" id="wbExportToggle">&#x2B07; Export &#x25BE;</button>
+                        <div class="export-menu" id="wbExportMenu">
+                            <div class="export-menu-header">Export Whiteboard</div>
+                            <button class="export-item" onclick="exportCanvas('png')">
+                                <div class="export-item-icon" style="background:rgba(99,102,241,0.15)">&#x1F5BC;</div>
+                                PNG Image
+                            </button>
+                            <button class="export-item" onclick="exportCanvas('jpeg')">
+                                <div class="export-item-icon" style="background:rgba(6,182,212,0.15)">&#x1F4F7;</div>
+                                JPEG Image
+                            </button>
+                            <button class="export-item" onclick="exportCanvas('svg')">
+                                <div class="export-item-icon" style="background:rgba(168,85,247,0.15)">&#x2726;</div>
+                                SVG Vector
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="canvas-wrapper">
+                <canvas id="whiteboardCanvas" width="1200" height="700"></canvas>
+            </div>
+        </section>
+
+        <!-- NOTEPAD PANEL -->
+        <section class="panel text-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <div class="panel-title-icon cyan">&#x1F4DD;</div>
+                    <h2>Shared Notepad</h2>
+                </div>
+                <div class="tools">
+                    <span id="saveIndicator">● Saved</span>
+                    <!-- Export notes -->
+                    <div class="export-wrapper">
+                        <button class="btn btn-ghost btn-sm" id="noteExportToggle">&#x2B07; Export &#x25BE;</button>
+                        <div class="export-menu" id="noteExportMenu">
+                            <div class="export-menu-header">Export Notes</div>
+                            <button class="export-item" onclick="exportNotes('txt')">
+                                <div class="export-item-icon" style="background:rgba(99,102,241,0.15)">&#x1F4C4;</div>
+                                Plain Text (.txt)
+                            </button>
+                            <button class="export-item" onclick="exportNotes('md')">
+                                <div class="export-item-icon" style="background:rgba(6,182,212,0.15)">&#x1F4CB;</div>
+                                Markdown (.md)
+                            </button>
+                            <button class="export-item" onclick="exportNotes('json')">
+                                <div class="export-item-icon" style="background:rgba(168,85,247,0.15)">{ }</div>
+                                JSON
+                            </button>
+                            <button class="export-item" onclick="exportNotes('pdf')">
+                                <div class="export-item-icon" style="background:rgba(239,68,68,0.15)">&#x1F4D5;</div>
+                                PDF (print)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="notepad-body">
+                <textarea id="sharedText" placeholder="Start typing… changes sync in real time with everyone in this room.&#10;&#10;Tip: Use Markdown formatting — it exports cleanly!"></textarea>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                    <span id="charCount" style="font-size:12px;color:var(--text-muted)">0 chars · 0 words</span>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-ghost btn-sm" id="formatMdBtn" title="Wrap selection in Markdown bold">
+                            <b>B</b>
+                        </button>
+                        <button class="btn btn-ghost btn-sm" id="clearNoteBtn">&#x1F5D1; Clear</button>
+                    </div>
+                </div>
+            </div>
+            <!-- Status bar -->
+            <div class="status-bar">
+                <div class="status-dot connecting" id="statusDot2"></div>
+                <span id="liveCount">0 people in room</span>
+                <span style="margin-left:auto;font-size:11px" id="lastSaved"></span>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+<script th:src="@{/js/workspace.js}"></script>
+</body>
+</html>

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="_csrf" th:content="${_csrf.token}">
+    <meta name="_csrf_header" th:content="${_csrf.headerName}">
+    <title>Dashboard | CollabSpace</title>
+    <meta name="description" content="Real-time collaborative workspace with whiteboard, shared notes, and instant team rooms.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+    <style>
+        .gradient-border-card {
+            background: var(--panel);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            position: relative;
+            overflow: hidden;
+        }
+        .gradient-border-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(99,102,241,0.4), transparent, rgba(6,182,212,0.3));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+<div class="app-bg">
+
+    <!-- ===== TOP BAR ===== -->
+    <header class="top-bar">
+        <a class="top-bar-brand" th:href="@{/dashboard}">
+            <div class="brand-icon" aria-label="CollabSpace logo">&#x2728;</div>
+            <div>
+                <h1>Collab<span>Space</span></h1>
+            </div>
+        </a>
+
+        <div class="header-actions">
+            <!-- Guest state -->
+            <div th:if="${!isAuthenticated}">
+                <button class="btn btn-ghost btn-sm" type="button"
+                        onclick="openModal('login')" id="headerLoginBtn">
+                    Sign In
+                </button>
+                <button class="btn btn-primary btn-sm" type="button"
+                        onclick="openModal('signup')" id="headerSignupBtn" style="margin-left:6px">
+                    Get Started
+                </button>
+            </div>
+            <!-- Authenticated state -->
+            <div th:if="${isAuthenticated}" class="header-actions">
+                <div class="user-badge">
+                    <div class="user-avatar" th:text="${displayName != null ? displayName.substring(0,1).toUpperCase() : 'U'}">U</div>
+                    <span th:text="${displayName}">User</span>
+                </div>
+                <form th:action="@{/logout}" method="post" style="margin:0">
+                    <button class="btn btn-ghost btn-sm" type="submit">Sign Out</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== MAIN ===== -->
+    <main class="dashboard-wrapper">
+
+        <!-- Hero -->
+        <section class="hero-section">
+            <div class="hero-badge">
+                <div class="dot"></div>
+                &#x1F4AC; Real-time collaboration - No install needed
+            </div>
+            <h1 class="hero-title">
+                Collaborate Without<br>
+                <span class="gradient-text">Boundaries</span>
+            </h1>
+            <p class="hero-sub">
+                Draw, write, and brainstorm with your team in real time.
+                Create a room in seconds - no account required.
+            </p>
+
+            <!-- Join Box -->
+            <div class="join-box">
+                <div class="gradient-border-card join-card">
+                    <p class="join-label">Join or create a room</p>
+                    <form class="room-form" id="dashRoomForm" th:action="@{/workspace}" method="get">
+                        <div class="join-row">
+                            <input type="text" name="roomId" id="roomIdInput"
+                                   placeholder="Room ID (leave blank for new room)"
+                                   autocomplete="off" spellcheck="false">
+                            <button type="submit" class="btn btn-primary btn-lg" style="flex-shrink:0">
+                                &#x1F680; Open Room
+                            </button>
+                        </div>
+                    </form>
+                    <div class="join-divider">or quickly start</div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap">
+                        <button class="btn btn-cyan" type="button" style="flex:1" onclick="startRandomRoom()">
+                            &#x26A1; Instant Room
+                        </button>
+                        <button class="btn btn-ghost" type="button" style="flex:1" onclick="copyRoomLink()">
+                            &#x1F517; Share Link
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-pill">
+                <div class="stat-icon">&#x1F3E0;</div>
+                <div class="stat-info">
+                    <strong id="statRooms">0</strong>
+                    <span>Rooms visited</span>
+                </div>
+            </div>
+            <div class="stat-pill">
+                <div class="stat-icon">&#x1F4DD;</div>
+                <div class="stat-info">
+                    <strong id="statChars">0</strong>
+                    <span>Notes written</span>
+                </div>
+            </div>
+            <div class="stat-pill">
+                <div class="stat-icon">&#x1F7E2;</div>
+                <div class="stat-info">
+                    <strong>Live</strong>
+                    <span>Sync status</span>
+                </div>
+            </div>
+            <div class="stat-pill">
+                <div class="stat-icon">&#x1F464;</div>
+                <div class="stat-info">
+                    <strong th:text="${isAuthenticated ? 'Saved' : 'Guest'}">Guest</strong>
+                    <span>Session mode</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features -->
+        <div class="features-grid">
+            <div class="feature-card gradient-border-card">
+                <span class="feature-icon">&#x1F58C;</span>
+                <h3>Live Whiteboard</h3>
+                <p>Draw and sketch together with colour picker, brush sizes, and eraser tools.</p>
+            </div>
+            <div class="feature-card gradient-border-card">
+                <span class="feature-icon">&#x1F4D3;</span>
+                <h3>Shared Notepad</h3>
+                <p>Real-time synced notes. Export as TXT, Markdown, PDF, or JSON.</p>
+            </div>
+            <div class="feature-card gradient-border-card">
+                <span class="feature-icon">&#x1F4BE;</span>
+                <h3>Auto-Save</h3>
+                <p>Notes are auto-saved and restored when teammates join the same room.</p>
+            </div>
+            <div class="feature-card gradient-border-card">
+                <span class="feature-icon">&#x1F517;</span>
+                <h3>Instant Share</h3>
+                <p>Share a room link - your team joins with one click, no sign-up needed.</p>
+            </div>
+        </div>
+
+        <!-- Recent Rooms (Authenticated Only) -->
+        <div th:if="${isAuthenticated}">
+            <div class="section-header">
+                <h2 class="section-title">&#x1F553; Recent Rooms</h2>
+                <button class="btn btn-ghost btn-sm" onclick="clearRecentRooms()">Clear</button>
+            </div>
+            <div class="rooms-grid" id="recentRoomsGrid">
+                <p class="no-rooms">No recent rooms yet. Open a room to get started!</p>
+            </div>
+        </div>
+
+        <!-- Auth CTA (guests only) -->
+        <div th:if="${!isAuthenticated}" class="auth-cta-banner gradient-border-card">
+            <div class="auth-cta-text">
+                <h3>&#x1F513; Unlock More with an Account</h3>
+                <p>Create a free account to save your sessions, sync across devices, and access your room history from anywhere.</p>
+            </div>
+            <div class="auth-cta-actions">
+                <button class="btn btn-primary btn-lg" type="button" onclick="openModal('signup')">
+                    Create Free Account
+                </button>
+                <button class="btn btn-ghost btn-lg" type="button" onclick="openModal('login')">
+                    Sign In
+                </button>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- ===== AUTH MODAL ===== -->
+<div class="modal-overlay" id="authModal" onclick="handleOverlayClick(event)">
+    <div class="modal-box">
+        <button class="modal-close" type="button" onclick="closeModal()" title="Close">&times;</button>
+
+        <div class="modal-header">
+            <div class="modal-brand">&#x2728;</div>
+            <div class="modal-title" id="modalTitle">Welcome back</div>
+            <div class="modal-sub" id="modalSub">&#x1F44B; Sign in to your CollabSpace account</div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="modal-tabs">
+            <button class="modal-tab active" type="button" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+            <button class="modal-tab" type="button" id="tabSignup" onclick="switchTab('signup')">Sign Up</button>
+            <button class="modal-tab" type="button" id="tabForgot" onclick="switchTab('forgot')">Forgot Password</button>
+        </div>
+
+        <!-- Login Form -->
+        <form class="modal-form active" id="formLogin" method="post" action="/login">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <div th:if="${param.error}" class="form-error">
+                Invalid email or password, or your account is not verified yet.
+            </div>
+            <div th:if="${param.verified != null or param.success != null or param.reset != null}" class="form-success">
+                <span th:if="${param.verified != null}">Account verified successfully. Please sign in.</span>
+                <span th:if="${param.success != null or param.reset != null}">Password reset successful. Please sign in.</span>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="loginEmail">Email</label>
+                <input type="email" id="loginEmail" name="username" placeholder="you@example.com" required autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="loginPassword">Password</label>
+                <input type="password" id="loginPassword" name="password" placeholder="********" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px">
+                Sign In
+            </button>
+            <div class="modal-footer">
+                <button type="button" style="background:none;border:none;color:var(--brand);cursor:pointer;font-size:14px;text-decoration:underline" onclick="switchTab('forgot')">Forgot password?</button>
+            </div>
+        </form>
+
+        <!-- Forgot Password Form -->
+        <form class="modal-form" id="formForgot" method="post" action="/forgot-password">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <div th:if="${param.forgotError}" class="form-error" th:text="${param.forgotError}"></div>
+            <div th:if="${param.forgotSent != null}" class="form-success">OTP sent to your email. Enter OTP and your new password below.</div>
+            <div class="form-group">
+                <label class="form-label" for="forgotEmail">Email</label>
+                <input type="email" id="forgotEmail" name="email" placeholder="you@example.com" required autocomplete="email">
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px" id="btnGetOtp">
+                Get OTP
+            </button>
+            <div id="forgotOtpSection" style="display:none;margin-top:20px">
+                <div class="form-group">
+                    <label class="form-label" for="forgotOtp">OTP Code</label>
+                    <input type="text" id="forgotOtp" name="otp" placeholder="6-digit code" maxlength="6" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="newPassword">New Password</label>
+                    <input type="password" id="newPassword" name="password" placeholder="Min. 8 characters" minlength="8" autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px" formaction="/forgot-password/reset">
+                    Reset Password
+                </button>
+            </div>
+        </form>
+
+        <!-- Signup Form -->
+        <form class="modal-form" id="formSignup" method="post" action="/signup">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <div th:if="${error}" class="form-error" th:text="${error}"></div>
+            <div class="form-group">
+                <label class="form-label" for="signupName">Full Name</label>
+                <input type="text" id="signupName" name="fullName" placeholder="Jane Doe" required autocomplete="name">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="signupEmail">Email</label>
+                <input type="email" id="signupEmail" name="email" placeholder="you@example.com" required autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="signupPassword">Password</label>
+                <input type="password" id="signupPassword" name="password" placeholder="Min. 8 characters" required autocomplete="new-password" minlength="8">
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px">
+                Create Account
+            </button>
+        </form>
+    </div>
+</div>
+
+<script th:inline="javascript">
+const IS_AUTHENTICATED = /*[[${isAuthenticated}]]*/ false;
+const CURRENT_USER = /*[[${userEmail}]]*/ '';
+const CSRF_TOKEN = document.querySelector('meta[name="_csrf"]')?.content;
+const CSRF_HEADER = document.querySelector('meta[name="_csrf_header"]')?.content;
+
+function logSave(scope, message) {
+    console.log(`[CollabSpace][${scope}] ${message}`);
+}
+
+function authRecentKey() {
+    const scope = (CURRENT_USER || 'unknown').toLowerCase().replace(/[^a-z0-9@._-]/g, '_');
+    return `cw_authenticated_recent_rooms:${scope}`;
+}
+
+function parseRooms(key) {
+    try {
+        const rooms = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(rooms) ? rooms : [];
+    } catch {
+        return [];
+    }
+}
+
+function normalizeRooms(rooms) {
+    return (rooms || [])
+        .filter(r => r && typeof r.id === 'string' && r.id.trim())
+        .map(r => ({ id: r.id.trim(), time: Number(r.time) || 0 }))
+        .sort((a, b) => {
+            if ((b.time || 0) !== (a.time || 0)) {
+                return (b.time || 0) - (a.time || 0);
+            }
+            return a.id.localeCompare(b.id);
+        })
+        .slice(0, 8);
+}
+
+function withCsrf(headers = {}) {
+    if (CSRF_TOKEN && CSRF_HEADER) {
+        headers[CSRF_HEADER] = CSRF_TOKEN;
+    }
+    return headers;
+}
+
+// ===== AUTH MODAL =====
+function openModal(tab) {
+    document.getElementById('authModal').classList.add('active');
+    switchTab(tab || 'login');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    document.getElementById('authModal').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function handleOverlayClick(e) {
+    if (e.target === document.getElementById('authModal')) closeModal();
+}
+
+function switchTab(tab) {
+    document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+    document.getElementById('tabSignup').classList.toggle('active', tab === 'signup');
+    document.getElementById('tabForgot').classList.toggle('active', tab === 'forgot');
+    document.getElementById('formLogin').classList.toggle('active', tab === 'login');
+    document.getElementById('formSignup').classList.toggle('active', tab === 'signup');
+    document.getElementById('formForgot').classList.toggle('active', tab === 'forgot');
+    
+    if (tab === 'login') {
+        document.getElementById('modalTitle').textContent = 'Welcome back';
+        document.getElementById('modalSub').textContent = '👋 Sign in to your CollabSpace account';
+    } else if (tab === 'signup') {
+        document.getElementById('modalTitle').textContent = 'Create account';
+        document.getElementById('modalSub').textContent = 'Join CollabSpace for free today';
+    } else if (tab === 'forgot') {
+        document.getElementById('modalTitle').textContent = 'Reset password';
+        document.getElementById('modalSub').textContent = '🔐 Enter your email to get an OTP';
+    }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// Auto-open modal if redirected with error,signup, or forgot intent
+(function() {
+    const params  = new URLSearchParams(location.search);
+    const hasErr  = /*[[${error != null}]]*/ false;
+    if (params.has('error'))  openModal('login');
+    if (params.has('signup')) openModal('signup');
+    if (params.has('forgot-otp')) {
+        openModal('forgot');
+        // Show OTP section after a short delay to allow modal to render
+        setTimeout(() => {
+            const email = params.get('email');
+            if (email) {
+                document.getElementById('forgotEmail').value = decodeURIComponent(email);
+                document.getElementById('forgotEmail').readOnly = true;
+            }
+            document.getElementById('forgotOtpSection').style.display = 'block';
+            document.getElementById('btnGetOtp').textContent = 'Resend OTP';
+            document.getElementById('forgotOtp').setAttribute('required', 'required');
+            document.getElementById('newPassword').setAttribute('required', 'required');
+        }, 100);
+    }
+    if (params.has('forgot')) openModal('forgot');
+    if (hasErr)               openModal('signup');
+})();
+
+// ===== ROOM ACTIONS =====
+function startRandomRoom() {
+    const id = Math.random().toString(36).slice(2, 10);
+    window.location.href = '/workspace/' + id;
+}
+
+function copyRoomLink() {
+    const id = document.getElementById('roomIdInput').value.trim()
+               || Math.random().toString(36).slice(2, 10);
+    navigator.clipboard.writeText(location.origin + '/workspace/' + id)
+    .then(() => showToast('Link copied to clipboard!'))
+        .catch(() => showToast('Room link: ' + location.origin + '/workspace/' + id));
+}
+
+// ===== RECENT ROOMS =====
+function getRecentRooms() {
+    return parseRooms('cw_recent_rooms');
+}
+
+function addRecentRoom(roomId) {
+    let rooms = getRecentRooms().filter(r => r.id !== roomId);
+    rooms.unshift({ id: roomId, time: Date.now() });
+    rooms = rooms.slice(0, 8);
+    localStorage.setItem('cw_recent_rooms', JSON.stringify(rooms));
+}
+
+function renderRecentRooms() {
+    const rooms = normalizeRooms(getDisplayRooms());
+    const grid = document.getElementById('recentRoomsGrid');
+    if (!rooms.length) {
+        grid.innerHTML = '<p class="no-rooms">No recent rooms yet. Open a room to get started!</p>';
+        return;
+    }
+    grid.innerHTML = rooms.map(r => {
+        const visited = formatVisited(r.time);
+        return `<a class="room-chip card" href="/workspace/${r.id}">
+            <div>
+                <div class="room-chip-id"># ${r.id}</div>
+                <div class="room-chip-meta" title="${visited.full}">Visited ${visited.label}</div>
+            </div>
+            <div class="room-chip-arrow">&rarr;</div>
+        </a>`;
+    }).join('');
+}
+
+function clearRecentRooms() {
+    if (IS_AUTHENTICATED) {
+        localStorage.removeItem(authRecentKey());
+        // Cleanup legacy keys from previous versions so they do not reappear.
+        localStorage.removeItem('cw_authenticated_recent_rooms');
+        localStorage.removeItem('cw_recent_rooms');
+    } else {
+        localStorage.removeItem('cw_recent_rooms');
+    }
+    renderRecentRooms();
+}
+
+function timeAgo(ts) {
+    const timeNum = Number(ts);
+    if (!Number.isFinite(timeNum) || timeNum <= 0) return 'unknown time';
+    const diff = Math.max(0, Date.now() - timeNum);
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    return Math.floor(h/24) + 'd ago';
+}
+
+function formatVisited(ts) {
+    const timeNum = Number(ts);
+    if (!Number.isFinite(timeNum) || timeNum <= 0) {
+        return { label: 'recently', full: 'Unknown time' };
+    }
+
+    const diff = Math.max(0, Date.now() - timeNum);
+    const oneHour = 60 * 60 * 1000;
+    const oneDay = 24 * oneHour;
+    const dt = new Date(timeNum);
+
+    let label;
+    if (diff < oneHour) {
+        label = timeAgo(timeNum);
+    } else if (diff < oneDay) {
+        label = dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } else {
+        label = dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' +
+                dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    return {
+        label,
+        full: dt.toLocaleString()
+    };
+}
+
+// ===== STATS =====
+function updateStats() {
+    const rooms = getDisplayRooms();
+    document.getElementById('statRooms').textContent = rooms.length;
+    const chars = parseInt(localStorage.getItem('cw_total_chars') || '0');
+    document.getElementById('statChars').textContent = chars > 999 ? (chars/1000).toFixed(1)+'k' : chars;
+}
+
+async function syncRecentRoomsToAccount() {
+    if (!IS_AUTHENTICATED) return;
+
+    // Prefer account-scoped local history; fallback once to legacy guest history.
+    const localRooms = parseRooms(authRecentKey());
+    const seedRooms = localRooms.length ? localRooms : getRecentRooms();
+
+    // Sync local rooms to current server account.
+    if (!localRooms.length && seedRooms.length) {
+        await fetch('/api/users/me/rooms/sync', {
+            method: 'POST',
+            headers: withCsrf({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ roomIds: seedRooms.map(r => r.id) })
+        }).catch(() => null);
+    }
+
+    // Get server-side rooms and make them the authoritative list
+    const response = await fetch('/api/users/me/rooms').catch(() => null);
+    if (!response || !response.ok) return;
+
+    const serverRooms = await response.json();
+    if (!Array.isArray(serverRooms)) return;
+
+    // Backward compatible: accept both [{id,time}] and legacy ["roomId", ...].
+    const existingById = new Map(normalizeRooms(parseRooms(authRecentKey())).map(r => [r.id, r.time]));
+
+    const authenticatedRooms = serverRooms
+        .map(item => {
+            if (typeof item === 'string') {
+                return { id: item, time: existingById.get(item) || 0 };
+            }
+            if (item && typeof item.id === 'string') {
+                return { id: item.id, time: Number(item.time) || existingById.get(item.id) || 0 };
+            }
+            return null;
+        })
+        .filter(item => item && item.id && item.id.trim());
+
+    localStorage.setItem(authRecentKey(), JSON.stringify(normalizeRooms(authenticatedRooms)));
+    logSave('Dashboard', `synced ${authenticatedRooms.length} rooms from server`);
+}
+
+function getDisplayRooms() {
+    if (IS_AUTHENTICATED) {
+        return normalizeRooms(parseRooms(authRecentKey()));
+    }
+    return normalizeRooms(getRecentRooms());
+}
+
+// ===== TOAST =====
+function showToast(msg) {
+    let t = document.getElementById('cwToast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'cwToast';
+        t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:rgba(18,26,50,0.95);border:1px solid rgba(99,102,241,0.4);color:#f0f4ff;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 8px 30px rgba(0,0,0,0.5);transition:opacity .3s;backdrop-filter:blur(10px)';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._to);
+    t._to = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+// Init
+(async function initDashboard() {
+    await syncRecentRoomsToAccount();
+    renderRecentRooms();
+    updateStats();
+})();
+</script>
+</body>
+</html>
+
