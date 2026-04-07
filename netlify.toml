@@ -1,0 +1,3 @@
+[build]
+  publish = "public"
+  command = "mkdir -p public && printf '/*  %s/:splat 200\\n' \"$NETLIFY_BACKEND_URL\" > public/_redirects"
